@@ -1,6 +1,5 @@
 `**README.md**`
 
-```markdown
 # Real-Time Event-Driven Microservices Platform
 
 An event-driven microservices platform on AWS EKS. Events are received
@@ -26,8 +25,6 @@ via GitOps with ArgoCD.
 | Monitoring       | Prometheus + Grafana + Loki      |
 
 ## How it works
-
-```
 
 Client → api-gateway → Kafka → stream-processor → PostgreSQL → Redis → websocket-server → Client
 
