@@ -3,6 +3,9 @@ kind: Deployment
 metadata:
   name: event-producer
   namespace: real-time-platform
+  labels:
+    app: event-producer
+    component: producer
 spec:
   replicas: 1
   selector:
@@ -12,7 +15,12 @@ spec:
     metadata:
       labels:
         app: event-producer
+        component: producer
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
       containers:
       - name: event-producer
         image: event-producer:latest
@@ -27,3 +35,10 @@ spec:
           limits:
             cpu: "300m"
             memory: "256Mi"
+        # No HTTP port — probe checks the process is still running
+        livenessProbe:
+          exec:
+            command: ["pgrep", "-f", "src.main"]
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          failureThreshold: 3

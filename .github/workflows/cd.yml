@@ -1,63 +1,86 @@
 name: Continuous Deployment
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Continuous Integration"]
+    types: [completed]
     branches: [main]
-    paths:
-      - 'services/**'
-      - 'kubernetes/**'
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY_API: real-time-platform/api-gateway
-  ECR_REPOSITORY_WEBSOCKET: real-time-platform/websocket-server
+  ECR_REPO_API:       real-time-platform/api-gateway
+  ECR_REPO_WEBSOCKET: real-time-platform/websocket-server
+  ECR_REPO_PRODUCER:  real-time-platform/event-producer
+  ECR_REPO_PROCESSOR: real-time-platform/stream-processor
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
     permissions:
       id-token: write
-      contents: read
+      contents: write
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::ACCOUNT:role/github-actions-role
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push API Gateway
+      - name: Build and push api-gateway
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          cd services/api-gateway
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_API:${{ github.sha }} .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY_API:${{ github.sha }}
-          docker tag  $ECR_REGISTRY/$ECR_REPOSITORY_API:${{ github.sha }} $ECR_REGISTRY/$ECR_REPOSITORY_API:latest
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY_API:latest
+          docker build -t $REGISTRY/$ECR_REPO_API:${{ github.sha }} services/api-gateway
+          docker push    $REGISTRY/$ECR_REPO_API:${{ github.sha }}
 
-      - name: Build and push WebSocket Server
+      - name: Build and push event-producer
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          cd services/websocket-server
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY_WEBSOCKET:${{ github.sha }} .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY_WEBSOCKET:${{ github.sha }}
+          docker build -t $REGISTRY/$ECR_REPO_PRODUCER:${{ github.sha }} services/event-producer
+          docker push    $REGISTRY/$ECR_REPO_PRODUCER:${{ github.sha }}
 
-      - name: Update Kubernetes manifests
+      - name: Build and push stream-processor
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker build -t $REGISTRY/$ECR_REPO_PROCESSOR:${{ github.sha }} services/stream-processor
+          docker push    $REGISTRY/$ECR_REPO_PROCESSOR:${{ github.sha }}
+
+      - name: Build and push websocket-server
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker build -t $REGISTRY/$ECR_REPO_WEBSOCKET:${{ github.sha }} services/websocket-server
+          docker push    $REGISTRY/$ECR_REPO_WEBSOCKET:${{ github.sha }}
+
+      - name: Update Kubernetes image tags
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           cd kubernetes/overlays/dev
-          kustomize edit set image api-gateway=${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY_API:${{ github.sha }}
+          kustomize edit set image \
+            api-gateway=$REGISTRY/$ECR_REPO_API:${{ github.sha }} \
+            event-producer=$REGISTRY/$ECR_REPO_PRODUCER:${{ github.sha }} \
+            stream-processor=$REGISTRY/$ECR_REPO_PROCESSOR:${{ github.sha }} \
+            websocket-server=$REGISTRY/$ECR_REPO_WEBSOCKET:${{ github.sha }}
 
       - name: Commit and push manifest changes
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add kubernetes/overlays/dev/kustomization.yaml
-          git commit -m "Update image tag to ${{ github.sha }}" || echo "No changes to commit"
+          # [skip ci] prevents this commit from re-triggering CI,
+          git commit -m "chore: update image tags to ${{ github.sha }} [skip ci]" || echo "No changes to commit"
           git push

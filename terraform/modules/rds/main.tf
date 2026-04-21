@@ -12,7 +12,7 @@ resource "aws_db_subnet_group" "main" {
 
 resource "aws_security_group" "postgres" {
   name        = "${var.project_name}-postgres-sg-${var.environment}"
-  description = "Security group for PostgreSQL"
+  description = "Security group for PostgreSQL RDS"
   vpc_id      = var.vpc_id
 
   ingress {
@@ -29,6 +29,14 @@ resource "aws_security_group" "postgres" {
     to_port         = 5432
     protocol        = "tcp"
     security_groups = [var.cluster_security_group_id]
+  }
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   tags = merge(var.tags, { Name = "${var.project_name}-postgres-sg" })
@@ -56,25 +64,11 @@ resource "aws_db_instance" "postgres" {
   backup_window           = "03:00-04:00"
   maintenance_window      = "sun:04:00-sun:05:00"
 
+  # skip_final_snapshot = true means a terraform destroy will permanently delete the database and all data without a backup.
   skip_final_snapshot = true
   deletion_protection = false
 
   tags = merge(var.tags, { Name = "${var.project_name}-postgres" })
-}
-
-resource "kubernetes_config_map_v1" "db_config" {
-  depends_on = [aws_db_instance.postgres]
-
-  metadata {
-    name      = "db-config"
-    namespace = "real-time-platform"
-  }
-
-  data = {
-    POSTGRES_HOST = aws_db_instance.postgres.address
-    POSTGRES_PORT = tostring(aws_db_instance.postgres.port)
-    POSTGRES_DB   = aws_db_instance.postgres.db_name
-  }
 }
 
 resource "aws_secretsmanager_secret" "db_credentials" {

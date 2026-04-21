@@ -3,6 +3,9 @@ kind: Deployment
 metadata:
   name: stream-processor
   namespace: real-time-platform
+  labels:
+    app: stream-processor
+    component: processor
 spec:
   replicas: 2
   selector:
@@ -12,7 +15,12 @@ spec:
     metadata:
       labels:
         app: stream-processor
+        component: processor
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
       containers:
       - name: stream-processor
         image: stream-processor:latest
@@ -22,8 +30,14 @@ spec:
             name: app-config
         resources:
           requests:
-            cpu: "200m" 
+            cpu: "200m"
             memory: "256Mi"
-          limits: 
+          limits:
             cpu: "500m"
-            memory: "512Mi" 
+            memory: "512Mi"
+        livenessProbe:
+          exec:
+            command: ["pgrep", "-f", "src.main"]
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          failureThreshold: 3

@@ -100,6 +100,24 @@ variable "kafka_version" {
   default     = "3.7.0"
 }
 
+variable "grafana_admin_password" {
+  description = "Admin password for Grafana"
+  type        = string
+  sensitive   = true
+}
+
+variable "prometheus_stack_chart_version" {
+  description = "Helm chart version for kube-prometheus-stack"
+  type        = string
+  default     = "70.4.2"
+}
+
+variable "loki_stack_chart_version" {
+  description = "Helm chart version for loki-stack"
+  type        = string
+  default     = "2.10.2"
+}
+
 variable "tags" {
   description = "Common tags for all resources"
   type        = map(string)
@@ -107,4 +125,11 @@ variable "tags" {
     Environment = "dev"
     Project     = "real-time-platform"
   }
+}
+
+variable "grafana_admin_password" {
+  description = "Grafana admin dashboard password"
+  type        = string
+  sensitive   = true
+  default     = "admin"
 }

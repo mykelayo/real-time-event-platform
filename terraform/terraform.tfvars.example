@@ -1,6 +1,0 @@
-project_name   = "real-time-platform"
-environment    = "dev"
-aws_region     = "us-east-1"
-db_username    = "dbadmin"
-db_password    = "changeme123"
-redis_password = "changeme456"

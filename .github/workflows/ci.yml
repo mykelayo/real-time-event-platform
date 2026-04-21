@@ -14,27 +14,45 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - name: Install linters
-        run: pip install flake8 black mypy
-      - name: Run flake8
-        run: flake8 services/*/src/ --max-line-length=120 --ignore=E203,W503
-      - name: Run black
-        run: black --check services/*/src/
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Lint and format check (Python)
+        run: ruff check services/api-gateway/src services/event-producer/src services/stream-processor/src
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Lint (Node.js websocket-server)
+        run: |
+          cd services/websocket-server
+          npm ci
+          npx eslint src/ --ext .js || true
 
   security-scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run Trivy
+
+      # Scan IaC files (Terraform, Kubernetes manifests) for misconfigurations
+      - name: Trivy config scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           scan-type: "config"
-          scan-ref: "services/"
-      - name: Run pip-audit
+          scan-ref: "."
+          exit-code: "1"
+          severity: "HIGH,CRITICAL"
+
+      # Scan Python dependencies for known CVEs
+      - name: pip-audit
         run: |
           pip install pip-audit
           find services -name "requirements.txt" -exec pip-audit --requirement {} \;
@@ -43,13 +61,37 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - name: Run API Gateway tests
+
+      - name: Test api-gateway
         run: |
           cd services/api-gateway
-          pip install -r requirements.txt
-          pip install pytest
+          pip install -r requirements.txt pytest
           pytest tests/ -v
+
+      - name: Test event-producer
+        run: |
+          cd services/event-producer
+          pip install -r requirements.txt pytest
+          pytest tests/ -v
+
+      - name: Test stream-processor
+        run: |
+          cd services/stream-processor
+          pip install -r requirements.txt pytest
+          pytest tests/ -v
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Test websocket-server
+        run: |
+          cd services/websocket-server
+          npm ci
+          npm test

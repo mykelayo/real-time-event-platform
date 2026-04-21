@@ -26,8 +26,8 @@ resource "aws_subnet" "public" {
   tags = merge(var.tags, {
     Name = "${var.project_name}-public-subnet-${var.environment}-${count.index}"
     Type = "Public"
-    "kubernetes.io/cluster/${var.project_name}"   = "shared"
-    "kubernetes.io/role/elb"                      = "1"
+    "kubernetes.io/cluster/${var.cluster_name}" = "shared"
+    "kubernetes.io/role/elb"                    = "1"
   })
 }
 
@@ -40,13 +40,14 @@ resource "aws_subnet" "private" {
   tags = merge(var.tags, {
     Name = "${var.project_name}-private-subnet-${var.environment}-${count.index}"
     Type = "Private"
-    "kubernetes.io/cluster/${var.project_name}" = "shared"
+    "kubernetes.io/cluster/${var.cluster_name}" = "shared"
     "kubernetes.io/role/internal-elb"           = "1"
   })
 }
 
 resource "aws_eip" "nat" {
-  count = length(var.public_subnet_cidrs)
+  count  = length(var.public_subnet_cidrs)
+  domain = "vpc"
 
   tags = merge(var.tags, {
     Name = "${var.project_name}-nat-eip-${var.environment}-${count.index}"

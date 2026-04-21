@@ -33,6 +33,10 @@ spec:
                   operator: In
                   values: [api-gateway]
               topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
       containers:
       - name: api-gateway
         image: api-gateway:latest
@@ -51,10 +55,16 @@ spec:
             cpu: "500m"
             memory: "512Mi"
         livenessProbe:
-          httpGet: { path: /health, port: 5000 }
+          httpGet:
+            path: /health
+            port: 5000
           initialDelaySeconds: 30
           periodSeconds: 10
+          failureThreshold: 3
         readinessProbe:
-          httpGet: { path: /health, port: 5000 }
+          httpGet:
+            path: /health
+            port: 5000
           initialDelaySeconds: 5
           periodSeconds: 5
+          failureThreshold: 3

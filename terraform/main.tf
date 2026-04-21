@@ -3,6 +3,7 @@ module "networking" {
 
   project_name         = var.project_name
   environment          = var.environment
+  cluster_name         = var.cluster_name
   vpc_cidr             = var.vpc_cidr
   availability_zones   = var.availability_zones
   private_subnet_cidrs = var.private_subnet_cidrs
@@ -50,6 +51,14 @@ module "rds" {
 module "monitoring" {
   source = "./modules/monitoring"
 
-  cluster_name = module.eks.cluster_name
-  tags         = var.tags
+  grafana_admin_password         = var.grafana_admin_password
+  prometheus_stack_chart_version = var.prometheus_stack_chart_version
+  loki_stack_chart_version       = var.loki_stack_chart_version
+
+  depends_on = [module.eks]
+}
+
+module "redis" {
+  source = "./modules/redis"
+  tags   = var.tags
 }
