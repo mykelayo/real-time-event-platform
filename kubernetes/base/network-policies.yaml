@@ -1,0 +1,155 @@
+# Block all ingress and egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: real-time-platform
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+---
+# All pods need DNS to resolve kafka, redis, postgres, and kubernetes services.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: real-time-platform
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+---
+# Ingress: accept traffic from the ALB (any source, ALB routes directly to pod IP)
+# Egress:  Kafka only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-gateway-policy
+  namespace: real-time-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: api-gateway
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - ports:
+    - port: 5000
+      protocol: TCP
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: prometheus
+    ports:
+    - port: 5000
+      protocol: TCP
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kafka
+    ports:
+    - port: 9092
+      protocol: TCP
+---
+# No ingress needed. Background worker with no HTTP port.
+# Egress: Kafka only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: event-producer-policy
+  namespace: real-time-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: event-producer
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kafka
+    ports:
+    - port: 9092
+      protocol: TCP
+---
+# Also no ingress needed. Background worker with no HTTP port.
+# Egress: Kafka (consume), Redis (cache), Postgres (persist)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: stream-processor-policy
+  namespace: real-time-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: stream-processor
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kafka
+    ports:
+    - port: 9092
+      protocol: TCP
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: redis
+    ports:
+    - port: 6379
+      protocol: TCP
+  # RDS is outside the cluster so we allow egress to any IP on 5432
+  # The RDS security group restricts access at the AWS level
+  - ports:
+    - port: 5432
+      protocol: TCP
+---
+# Ingress: accept traffic from the ALB
+# Egress:  Redis only (reads event counts)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: websocket-server-policy
+  namespace: real-time-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: websocket-server
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - ports:
+    - port: 8080
+      protocol: TCP
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: redis
+    ports:
+    - port: 6379
+      protocol: TCP

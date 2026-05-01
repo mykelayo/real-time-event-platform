@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../../base
+
+patches:
+- path: replica-count.yaml
+- path: configmap-patch.yaml
+
+images:
+- name: REGISTRY/api-gateway
+  newName: REGISTRY/api-gateway
+  newTag: "latest"
+- name: REGISTRY/event-producer
+  newName: REGISTRY/event-producer
+  newTag: "latest"
+- name: REGISTRY/stream-processor
+  newName: REGISTRY/stream-processor
+  newTag: "latest"
+- name: REGISTRY/websocket-server
+  newName: REGISTRY/websocket-server
+  newTag: "latest"

@@ -1,0 +1,86 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: real-time-platform-alerts
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: kube-prometheus-stack
+spec:
+  groups:
+  - name: real-time-platform.rules
+    interval: 30s
+    rules:
+
+    - alert: ApiGatewayPodDown
+      expr: |
+        kube_pod_status_ready{namespace="real-time-platform", pod=~"api-gateway.*", condition="true"} == 0
+        or
+        absent(kube_pod_status_ready{namespace="real-time-platform", pod=~"api-gateway.*", condition="true"})
+      for: 2m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "API Gateway pod is down"
+        description: "Pod {{ $labels.pod }} has been down for more than 2 minutes"
+
+    - alert: StreamProcessorPodDown
+      expr: |
+        kube_pod_status_ready{namespace="real-time-platform", pod=~"stream-processor.*", condition="true"} == 0
+        or
+        absent(kube_pod_status_ready{namespace="real-time-platform", pod=~"stream-processor.*", condition="true"})
+      for: 2m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Stream Processor pod is down"
+        description: "Pod {{ $labels.pod }} has been down for more than 2 minutes — events may be queuing in Kafka"
+
+    - alert: WebSocketServerPodDown
+      expr: |
+        kube_pod_status_ready{namespace="real-time-platform", pod=~"websocket-server.*", condition="true"} == 0
+        or
+        absent(kube_pod_status_ready{namespace="real-time-platform", pod=~"websocket-server.*", condition="true"})
+      for: 2m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "WebSocket Server pod is down"
+        description: "Pod {{ $labels.pod }} has been down for more than 2 minutes — live updates stopped"
+
+    - alert: HighApiErrorRate
+      expr: rate(http_requests_total{status="500"}[5m]) > 0.05
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "High error rate on API Gateway"
+        description: "500 error rate is {{ $value | humanize }} req/s over the last 5 minutes"
+
+    - alert: HighCpuUsage
+      expr: sum(rate(container_cpu_usage_seconds_total{namespace="real-time-platform"}[5m])) by (pod) > 0.8
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "High CPU usage on {{ $labels.pod }}"
+        description: "Pod {{ $labels.pod }} has been using {{ $value | humanize }} cores for 5 minutes"
+
+    - alert: HighMemoryUsage
+      expr: |
+        sum(container_memory_working_set_bytes{namespace="real-time-platform"}) by (pod)
+        /
+        sum(container_spec_memory_limit_bytes{namespace="real-time-platform"}) by (pod)
+        > 0.9
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "High memory usage on {{ $labels.pod }}"
+        description: "Memory usage is {{ $value | humanizePercentage }} on pod {{ $labels.pod }}"

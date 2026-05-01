@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: real-time-platform
+  labels:
+    name: real-time-platform
+    app.kubernetes.io/name: real-time-platform
+    app.kubernetes.io/part-of: event-platform

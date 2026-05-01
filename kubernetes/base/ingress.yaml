@@ -1,0 +1,34 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: platform-ingress
+  namespace: real-time-platform
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    # WebSocket support - tells ALB to keep connections open
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=3600
+    # Group both rules onto a single ALB to avoid provisioning two
+    alb.ingress.kubernetes.io/group.name: real-time-platform
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+        - path: /api
+          pathType: Prefix
+          backend:
+            service:
+              name: api-gateway
+              port:
+                number: 5000
+    - http:
+        paths:
+        - path: /ws
+          pathType: Prefix
+          backend:
+            service:
+              name: websocket-server
+              port:
+                number: 8080

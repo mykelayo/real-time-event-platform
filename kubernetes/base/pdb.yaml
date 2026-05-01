@@ -1,0 +1,21 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-gateway-pdb
+  namespace: real-time-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: stream-processor-pdb
+  namespace: real-time-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: stream-processor

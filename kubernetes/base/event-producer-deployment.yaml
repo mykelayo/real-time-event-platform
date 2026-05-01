@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-producer
+  namespace: real-time-platform
+  labels:
+    app: event-producer
+    component: producer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: event-producer
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: event-producer
+        component: producer
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values: [event-producer]
+              topologyKey: kubernetes.io/hostname
+
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      containers:
+      - name: event-producer
+        image: REGISTRY/event-producer:latest
+        imagePullPolicy: Always
+        envFrom:
+        - configMapRef:
+            name: app-config
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "300m"
+            memory: "256Mi"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        # No HTTP port — probe checks the process is still running
+        livenessProbe:
+          exec:
+            command: ["pgrep", "-f", "src.main"]
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          failureThreshold: 3
