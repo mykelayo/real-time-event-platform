@@ -9,18 +9,6 @@ patches:
 - path: configmap-patch.yaml
 
 images:
-- name: REGISTRY/api-gateway
-  newName: REGISTRY/api-gateway
-  newTag: latest
-- name: REGISTRY/event-producer
-  newName: REGISTRY/event-producer
-  newTag: latest
-- name: REGISTRY/stream-processor
-  newName: REGISTRY/stream-processor
-  newTag: latest
-- name: REGISTRY/websocket-server
-  newName: REGISTRY/websocket-server
-  newTag: latest
 - name: api-gateway
   newName: 865189667386.dkr.ecr.us-east-1.amazonaws.com/real-time-platform/api-gateway
   newTag: 9e3e5aaf49322cf38a63b8e2d4f85b56efc94b48
