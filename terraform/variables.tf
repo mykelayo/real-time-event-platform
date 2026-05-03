@@ -130,6 +130,11 @@ variable "github_token" {
   default     = ""
 }
 
+variable "admin_role_arn" {
+  description = "IAM user or role ARN to grant cluster admin access"
+  type        = string
+}
+
 variable "argocd_chart_version" {
   description = "Helm chart version for ArgoCD"
   type        = string
@@ -149,16 +154,10 @@ variable "argocd_webhook_secret" {
   default     = ""
 }
 
-variable "loki_chart_version" {
-  description = "Helm chart version for Loki"
+variable "loki_stack_chart_version" {
+  description = "Helm chart version for loki-stack"
   type        = string
-  default     = "6.55.0"
-}
-
-variable "alloy_chart_version" {
-  description = "Helm chart version for Grafana Alloy"
-  type        = string
-  default     = "0.12.5"
+  default     = "2.10.2"
 }
 
 variable "tags" {
