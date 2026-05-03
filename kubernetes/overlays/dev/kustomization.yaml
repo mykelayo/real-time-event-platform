@@ -11,13 +11,13 @@ patches:
 images:
 - name: api-gateway
   newName: 865189667386.dkr.ecr.us-east-1.amazonaws.com/real-time-platform/api-gateway
-  newTag: 9e3e5aaf49322cf38a63b8e2d4f85b56efc94b48
+  newTag: 27323e72a8a3b39ab9fe5fa8b4e77b7699ec1196
 - name: event-producer
   newName: 865189667386.dkr.ecr.us-east-1.amazonaws.com/real-time-platform/event-producer
-  newTag: 9e3e5aaf49322cf38a63b8e2d4f85b56efc94b48
+  newTag: 27323e72a8a3b39ab9fe5fa8b4e77b7699ec1196
 - name: stream-processor
   newName: 865189667386.dkr.ecr.us-east-1.amazonaws.com/real-time-platform/stream-processor
-  newTag: 9e3e5aaf49322cf38a63b8e2d4f85b56efc94b48
+  newTag: 27323e72a8a3b39ab9fe5fa8b4e77b7699ec1196
 - name: websocket-server
   newName: 865189667386.dkr.ecr.us-east-1.amazonaws.com/real-time-platform/websocket-server
-  newTag: 9e3e5aaf49322cf38a63b8e2d4f85b56efc94b48
+  newTag: 27323e72a8a3b39ab9fe5fa8b4e77b7699ec1196
