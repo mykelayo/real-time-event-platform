@@ -10,4 +10,6 @@ CVE-2025-69720
 # systemd IPC issue. unfixed in debian 13
 CVE-2026-29111
 # libcap2 privilege escalation. unfixed in debian 13
-CVE-2026-4878CVE-2026-33671
+CVE-2026-4878
+# picomatch ReDoS vulnerability - fixed in 4.0.4, but transitive dependency
+CVE-2026-33671
