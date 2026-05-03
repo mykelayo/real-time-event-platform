@@ -4,21 +4,21 @@ An event-driven microservices platform on AWS EKS. Events are received by an API
 
 ## Architecture
 
-| Component        | Technology                         |
-|------------------|------------------------------------|
-| API Gateway      | Flask (Python 3.13)                |
-| Event Producer   | Python + kafka-python              |
-| Stream Processor | Python + kafka-python + psycopg2   |
-| WebSocket Server | Node.js 22 + ws                    |
-| Message Broker   | Apache Kafka 3.7 (Strimzi, KRaft)  |
-| Cache            | Redis (Bitnami Helm chart)         |
-| Database         | PostgreSQL 16 (AWS RDS)            |
-| Container Registry | AWS ECR (immutable tags)         |
-| Orchestration    | AWS EKS (Kubernetes 1.32)          |
-| IaC              | Terraform >= 1.7                   |
-| GitOps           | ArgoCD + Kustomize                 |
-| CI/CD            | GitHub Actions                     |
-| Monitoring       | Prometheus + Grafana + Loki        |
+| Component          | Technology                                      |
+|--------------------|-------------------------------------------------|
+| API Gateway        | Flask (Python 3.13)                             |
+| Event Producer     | Python + kafka-python-ng                        |
+| Stream Processor   | Python + kafka-python-ng + psycopg2             |
+| WebSocket Server   | Node.js 22 + ws                                 |
+| Message Broker     | Apache Kafka 3.7 (Strimzi 0.43.0, KRaft mode)  |
+| Cache              | Redis 8.x (Bitnami Helm chart, ECR Public)      |
+| Database           | PostgreSQL 16 (AWS RDS)                         |
+| Container Registry | AWS ECR (immutable tags)                        |
+| Orchestration      | AWS EKS 1.32 (managed node group, c7i-flex.large) |
+| IaC                | Terraform                                        |
+| GitOps             | ArgoCD + Kustomize                              |
+| CI/CD              | GitHub Actions (OIDC)                           |
+| Monitoring         | kube-prometheus-stack + Loki                     |
 
 ## How it works
 
@@ -33,31 +33,36 @@ Each component is a separate microservice with a single responsibility:
 - **stream-processor** — Kafka consumer that persists every event to PostgreSQL and increments per-event-type counters in Redis
 - **websocket-server** — reads Redis counters every second and pushes live updates to all connected browser clients over a persistent WebSocket connection
 
-Kafka decouples producers from consumers — the api-gateway publishes and moves on regardless of how fast the stream-processor can consume. If the processor is slow or crashes, events queue durably in Kafka and are replayed from the last committed offset on restart.
+Kafka decouples producers from consumers, the api-gateway publishes and moves on regardless of how fast the stream-processor can consume. If the processor is slow or crashes, events queue durably in Kafka and are replayed from the last committed offset on restart.
 
 ## Prerequisites
 
-- AWS CLI configured with EKS, RDS, VPC, ECR, and IAM permissions
+- AWS CLI configured with permissions for EKS, RDS, VPC, ECR, IAM, and Secrets Manager
 - Terraform >= 1.7
 - kubectl
 - kustomize >= 5.4
+- helm >= 3.x
 - make
-- htpasswd (for generating the ArgoCD admin password hash)
+- htpasswd (for generating the ArgoCD admin password hash — part of `apache2-utils` on Debian/Ubuntu)
 
 ## Quick Start
 
 ```bash
 # 1. Copy and fill in non-sensitive Terraform variables
 cp terraform/terraform.tfvars.example terraform/terraform.tfvars
-# edit terraform.tfvars — set github_org, github_repo 
+# edit terraform.tfvars — set github_org, github_repo
 
-# 2. Export sensitive variables — do not write these to terraform.tfvars
+# 2. Export sensitive variables
+
+export AWS_ACCESS_KEY_ID="youraccesskeyid"
+export AWS_SECRET_ACCESS_KEY="yoursecretaccesskey"
 export TF_VAR_db_username="appuser"
 export TF_VAR_db_password="yourpassword"
 export TF_VAR_redis_password="yourpassword"
 export TF_VAR_grafana_admin_password="yourpassword"
 export TF_VAR_github_token="ghp_..."
 export TF_VAR_argocd_webhook_secret="yourwebhooksecret"
+export TF_VAR_admin_role_arn="youradminrolearn"
 
 # 3. Generate and export the ArgoCD admin password bcrypt hash
 export TF_VAR_argocd_admin_password_bcrypt=$(htpasswd -nbBC 10 '' yourpassword | tr -d ':\n' | sed 's/$2y/$2a/')
@@ -65,14 +70,16 @@ export TF_VAR_argocd_admin_password_bcrypt=$(htpasswd -nbBC 10 '' yourpassword |
 # 4. Provision all infrastructure and deploy
 make deploy
 
-# 5. Port-forward services for local access
+# 5. After deploy completes, set the RDS hostname (see section below)
+
+# 6. Port-forward services for local access
 make port-forward
 
-# 6. Run a load test
+# 7. Run a load test
 make load-test
 ```
 
-`make deploy` provisions VPC, EKS, ECR, RDS, Redis, Kafka, ArgoCD, and monitoring in one shot — then waits for ArgoCD to sync all application services to the cluster.
+`make deploy` runs in stages: provisions VPC and EKS first, installs the Strimzi operator directly via kubectl, then provisions Redis, ArgoCD, Kafka CRD resources, and monitoring then waits for ArgoCD to sync all application services to the cluster.
 
 ## Secrets
 
@@ -84,8 +91,6 @@ kubectl create secret generic app-secrets \
   --from-literal=POSTGRES_USER=appuser \
   --from-literal=POSTGRES_PASSWORD=yourpassword
 ```
-
-Terraform stores the full RDS credentials automatically in AWS Secrets Manager at `real-time-platform-db-credentials-dev`. The production path is to replace the manual step above with the External Secrets Operator (ESO) pulling from Secrets Manager — see `kubernetes/base/secrets.yaml` for the placeholder and wiring.
 
 ## After first deploy — set the RDS hostname
 
@@ -103,18 +108,33 @@ terraform -chdir=terraform output -raw db_endpoint
 
 All AWS infrastructure is managed by Terraform under `terraform/`. The module layout is:
 
-| Module       | What it provisions                                         |
-|--------------|------------------------------------------------------------|
-| networking   | VPC, public/private subnets, NAT gateways, route tables    |
-| eks          | EKS cluster, managed node group, IRSA, CloudWatch logging  |
-| ecr          | ECR repositories for all four services (immutable tags)    |
-| rds          | PostgreSQL 16 on RDS, subnet group, security group         |
-| redis        | Redis via Bitnami Helm chart in the `redis` namespace      |
-| kafka        | Strimzi operator + KRaft Kafka cluster + `user-events` topic |
-| argocd       | ArgoCD, repo credentials, Application resource             |
-| monitoring   | kube-prometheus-stack + Loki via Helm                      |
+| Module     | What it provisions                                                        |
+|------------|---------------------------------------------------------------------------|
+| networking | VPC, public/private subnets, NAT gateways, route tables                   |
+| eks        | EKS 1.32 cluster, managed node group, IRSA roles, CloudWatch logging, ALB controller |
+| ecr        | ECR repositories for all four services (immutable tags)                   |
+| rds        | PostgreSQL 16 on RDS, subnet group, security group, Secrets Manager secret |
+| redis      | Redis via Bitnami Helm chart (ECR Public registry)                        |
+| kafka      | Kafka namespace + KafkaNodePool + Kafka cluster + `user-events` topic (Strimzi installed separately) |
+| argocd     | ArgoCD, repo credentials, Application resource                            |
+| monitoring | kube-prometheus-stack 70.4.2, Loki      |
 
-ECR repositories are created with `image_tag_mutability = IMMUTABLE` — the same SHA tag cannot be pushed twice, which enforces the GitOps guarantee that a tag always refers to the same image.
+ECR repositories are created with `image_tag_mutability = IMMUTABLE`, the same SHA tag cannot be pushed twice, which enforces the GitOps guarantee that a tag always refers to the same image.
+
+### Strimzi operator install
+
+The Strimzi operator is installed directly via kubectl rather than through Terraform's Helm provider, this is handled automatically by `make deploy` and `make terraform-apply`. The Kafka CRD resources (KafkaNodePool, Kafka cluster, KafkaTopic) are still managed by Terraform via the `kubectl` provider and depend on the operator being ready.
+
+```bash
+# Strimzi is installed at version 0.43.0
+kubectl apply -f "https://github.com/strimzi/strimzi-kafka-operator/releases/download/0.43.0/strimzi-cluster-operator-0.43.0.yaml" -n kafka
+```
+
+### Redis image source
+
+Redis is configured to pull from ECR Public Gallery (`public.ecr.aws/bitnami/redis`) which has no rate limits within AWS infrastructure.
+
+The `terraform-apply` target stages the apply, networking and ECR are provisioned first, then EKS separately. 
 
 ## CI/CD Pipeline
 
@@ -123,21 +143,22 @@ Defined in `.github/workflows/ci.yml`. All jobs run on every push to `main` and 
 ```
 push to main
   ├── lint          ruff (Python), eslint (Node.js)
-  ├── security-scan Trivy IaC scan + pip-audit
+  ├── security-scan Trivy IaC config scan + pip-audit
   └── test          pytest (Python services), jest (websocket-server)
         │
         └── all pass → build-and-push
+              ├── authenticates to AWS via OIDC
               ├── builds each image and pushes to ECR (SHA-only tag, no :latest)
-              ├── scans each built image with Trivy — stops on HIGH/CRITICAL CVEs
+              ├── scans each built image with Trivy, fails on HIGH/CRITICAL CVEs
               ├── updates kubernetes/overlays/dev/kustomization.yaml with new tags
               └── commits manifest [skip ci] → ArgoCD syncs to EKS
 ```
 
-### Required GitHub secret
+### Required GitHub secrets
 
-| Secret         | Description                                      |
-| -------------- | ------------------------------------------------ |
-| `AWS_ROLE_ARN` | IAM role ARN for GitHub Actions OIDC federation  |
+| Secret         | Description                                                        |
+|----------------|--------------------------------------------------------------------|
+| `AWS_ROLE_ARN` | IAM role ARN for GitHub Actions OIDC federation                    |
 
 ## GitOps with ArgoCD
 
@@ -164,7 +185,7 @@ make deploy            # full provision + deploy (start here)
 make cleanup           # destroy everything (prompts for confirmation)
 
 make terraform-plan    # preview infrastructure changes
-make terraform-apply   # apply changes with interactive approval
+make terraform-apply   # staged apply — networking/ECR, then EKS, then everything else
 make kubeconfig        # configure kubectl for the cluster
 
 make status            # pod status across all namespaces
@@ -188,7 +209,7 @@ kubectl port-forward svc/kube-prometheus-stack-grafana -n monitoring 3000:80
 # password: the value you set for TF_VAR_grafana_admin_password
 ```
 
-Prometheus discovers `ServiceMonitor` resources across all namespaces including `real-time-platform`. Loki collects logs from all pods via Promtail and is pre-wired as a Grafana datasource.
+Prometheus discovers `ServiceMonitor` resources across all namespaces. Application services expose metrics at `/metrics` which Prometheus scrapes automatically.
 
 ## Cleanup
 
@@ -196,4 +217,4 @@ Prometheus discovers `ServiceMonitor` resources across all namespaces including 
 make cleanup
 ```
 
-Deletes the ArgoCD Application (which cascades to all managed Kubernetes resources via the finalizer), waits for load balancers to deprovision, then runs `terraform destroy` to remove all AWS infrastructure.
+Deletes the ArgoCD Application (cascading to all managed Kubernetes resources), uninstalls Helm releases and CRDs for Strimzi and monitoring, waits for load balancers to deprovision, then runs `terraform destroy` in stages: app-level resources first, EKS second, networking and ECR last. This ordering prevents ENIs and security groups from blocking VPC deletion.
