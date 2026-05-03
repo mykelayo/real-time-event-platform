@@ -33,6 +33,7 @@ module "eks" {
   public_subnet_ids   = module.networking.public_subnet_ids
   node_instance_types = var.node_instance_types
   desired_node_count  = var.desired_node_count
+  
   admin_role_arn      = var.admin_role_arn
   lbc_chart_version   = var.lbc_chart_version
   min_node_count      = var.min_node_count

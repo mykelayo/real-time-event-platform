@@ -133,6 +133,7 @@ variable "github_token" {
 variable "admin_role_arn" {
   description = "IAM user or role ARN to grant cluster admin access"
   type        = string
+  default     = ""
 }
 
 variable "argocd_chart_version" {

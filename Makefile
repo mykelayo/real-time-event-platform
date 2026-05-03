@@ -70,17 +70,25 @@ terraform-plan:
 	cd terraform && terraform plan
 
 terraform-apply:
-	@echo "==> Step 1: provisioning ArgoCD namespace, Helm release, and repo secret..."
+	@echo "==> Step 1: Core infrastructure (networking, ECR)..."
+	cd terraform && terraform init
 	cd terraform && terraform apply \
 		-target=module.networking \
 		-target=module.eks \
 		-target=module.ecr \
 		-auto-approve
-	@echo "==> Step 2: Installing Strimzi operator..."
+
+	echo "==> EKS cluster module"
+	cd terraform && terraform apply -auto-approve \
+  		-target=module.eks
+		
+	@echo "==> Step 2: Configure kubectl..."
+	aws eks update-kubeconfig --region $(AWS_REGION) --name $(shell cd terraform && terraform output -raw cluster_name)
+	@echo "==> Step 3: Install Strimzi operator..."
 	kubectl create namespace kafka --dry-run=client -o yaml | kubectl apply -f -
 	kubectl apply -f "https://github.com/strimzi/strimzi-kafka-operator/releases/download/0.43.0/strimzi-cluster-operator-0.43.0.yaml" -n kafka
 	kubectl wait deployment/strimzi-cluster-operator --for=condition=available --timeout=120s -n kafka
-	@echo "==> Step 3: provisioning remaining resources..."
+	@echo "==> Step 4: Remaining resources..."
 	cd terraform && terraform apply -auto-approve
 
 terraform-destroy:
@@ -90,7 +98,7 @@ terraform-destroy:
 # ── Cluster ───────────────────────────────────────────────────────────────────
 
 kubeconfig:
-	aws eks update-kubeconfig --region $(AWS_REGION) --name $(CLUSTER_NAME)
+	aws eks update-kubeconfig --region $(AWS_REGION) --name $(shell cd terraform && terraform output -raw cluster_name)
 
 status:
 	kubectl get pods -A
