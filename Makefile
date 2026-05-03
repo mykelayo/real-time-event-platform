@@ -1,4 +1,4 @@
-CLUSTER_NAME  ?= real-time-platform-cluster
+CLUSTER_NAME  ?= rt-platform
 AWS_REGION    ?= us-east-1
 NAMESPACE     ?= real-time-platform
 ARGOCD_NS     ?= argocd
@@ -72,11 +72,15 @@ terraform-plan:
 terraform-apply:
 	@echo "==> Step 1: provisioning ArgoCD namespace, Helm release, and repo secret..."
 	cd terraform && terraform apply \
-		-target=module.argocd.kubernetes_namespace_v1.argocd \
-		-target=module.argocd.helm_release.argocd \
-		-target=module.argocd.kubernetes_secret_v1.argocd_repo \
+		-target=module.networking \
+		-target=module.eks \
+		-target=module.ecr \
 		-auto-approve
-	@echo "==> Step 2: provisioning remaining resources..."
+	@echo "==> Step 2: Installing Strimzi operator..."
+	kubectl create namespace kafka --dry-run=client -o yaml | kubectl apply -f -
+	kubectl apply -f "https://github.com/strimzi/strimzi-kafka-operator/releases/download/0.43.0/strimzi-cluster-operator-0.43.0.yaml" -n kafka
+	kubectl wait deployment/strimzi-cluster-operator --for=condition=available --timeout=120s -n kafka
+	@echo "==> Step 3: provisioning remaining resources..."
 	cd terraform && terraform apply -auto-approve
 
 terraform-destroy:
