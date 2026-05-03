@@ -33,11 +33,14 @@ module "eks" {
   public_subnet_ids   = module.networking.public_subnet_ids
   node_instance_types = var.node_instance_types
   desired_node_count  = var.desired_node_count
+  admin_role_arn      = var.admin_role_arn
   lbc_chart_version   = var.lbc_chart_version
   min_node_count      = var.min_node_count
   max_node_count      = var.max_node_count
   aws_region          = var.aws_region
   tags                = var.tags
+
+  depends_on = [module.networking]
 }
 
 module "kafka" {
@@ -63,6 +66,8 @@ module "rds" {
   db_username               = var.db_username
   db_password               = var.db_password
   tags                      = var.tags
+
+  depends_on = [module.networking, module.eks]
 }
 
 module "monitoring" {
@@ -70,8 +75,7 @@ module "monitoring" {
 
   grafana_admin_password         = var.grafana_admin_password
   prometheus_stack_chart_version = var.prometheus_stack_chart_version
-  loki_chart_version             = var.loki_chart_version
-  alloy_chart_version            = var.alloy_chart_version
+  loki_stack_chart_version       = var.loki_stack_chart_version
 
   depends_on = [module.eks, module.kafka, module.redis]
 }
