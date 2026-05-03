@@ -198,12 +198,20 @@ jobs:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           cd kubernetes/overlays/dev
-          kustomize edit set image \
-            api-gateway=$REGISTRY/$ECR_REPO_API:${{ github.sha }} \
-            event-producer=$REGISTRY/$ECR_REPO_PRODUCER:${{ github.sha }} \
-            stream-processor=$REGISTRY/$ECR_REPO_PROCESSOR:${{ github.sha }} \
-            websocket-server=$REGISTRY/$ECR_REPO_WEBSOCKET:${{ github.sha }}
 
+          # First, reset to clean state (remove all existing image transformations)
+          kustomize edit set image \
+              api-gateway=REGISTRY/api-gateway:latest \
+              event-producer=REGISTRY/event-producer:latest \
+              stream-processor=REGISTRY/stream-processor:latest \
+              websocket-server=REGISTRY/websocket-server:latest
+      
+          # Then set the actual images
+          kustomize edit set image \
+              api-gateway=$REGISTRY/$ECR_REPO_API:${{ github.sha }} \
+              event-producer=$REGISTRY/$ECR_REPO_PRODUCER:${{ github.sha }} \
+              stream-processor=$REGISTRY/$ECR_REPO_PROCESSOR:${{ github.sha }} \
+              websocket-server=$REGISTRY/$ECR_REPO_WEBSOCKET:${{ github.sha }}
       - name: Commit and push manifest changes
         run: |
           git config user.name "github-actions[bot]"
