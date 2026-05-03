@@ -10,3 +10,4 @@ variable "max_node_count"      { type = number }
 variable "tags"                { type = map(string) }
 variable "aws_region"          { type = string }
 variable "lbc_chart_version"   { type = string }
+variable "admin_role_arn"      { type = string}
