@@ -4,8 +4,10 @@ AWS-0040
 AWS-0041
 AWS-0104
 
-# No fix available as of 2026-04-25 for base image OS packages
+# No fix available as of 2026-05-03 for base image OS packages
 # ncurses buffer overflow. unfixed in debian 13
 CVE-2025-69720
 # systemd IPC issue. unfixed in debian 13
 CVE-2026-29111
+# libcap2 privilege escalation. unfixed in debian 13
+CVE-2026-4878
