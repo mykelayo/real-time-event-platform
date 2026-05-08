@@ -1,48 +1,84 @@
-"#!/bin/bash
+#!/bin/bash
 set -euo pipefail
-check_pods() {
-  local namespace=$1
-  local label=$2
-  local statuses
-  statuses=$(kubectl get pods -n "$namespace" -l "$label" \
-    -o jsonpath='{.items[*].status.phase}' 2>/dev/null)
-  if [ -z "$statuses" ]; then
-    return 1
-  fi
-  for status in $statuses; do
-    [ "$status" = "Running" ] || return 1
-  done
-  return 0
-}
+
+NAMESPACE="real-time-platform"
+ARGOCD_NS="argocd"
+PROJECT_NAME="real-time-platform"
+
 pass() { echo "OK"; }
 fail() { echo "FAILED"; }
-echo "Application..."
-echo -n "Backend pods:   "; check_pods devops-app "app=backend"  && pass || fail
-echo -n "Frontend pods:  "; check_pods devops-app "app=frontend" && pass || fail
+
+check_deployment() {
+  local namespace=$1
+  local name=$2
+  local available
+  available=$(kubectl get deployment "$name" -n "$namespace" \
+    -o jsonpath='{.status.availableReplicas}' 2>/dev/null || echo "0")
+  local desired
+  desired=$(kubectl get deployment "$name" -n "$namespace" \
+    -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "1")
+  [ "${available:-0}" -ge 1 ] && [ "${available:-0}" -eq "${desired:-1}" ]
+}
+
+check_statefulset() {
+  local namespace=$1
+  local name=$2
+  local ready
+  ready=$(kubectl get statefulset "$name" -n "$namespace" \
+    -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+  [ "${ready:-0}" -ge 1 ]
+}
+
+echo "Application (namespace: $NAMESPACE)..."
+echo -n "  api-gateway:      "; check_deployment "$NAMESPACE" api-gateway      && pass || fail
+echo -n "  event-producer:   "; check_deployment "$NAMESPACE" event-producer   && pass || fail
+echo -n "  stream-processor: "; check_deployment "$NAMESPACE" stream-processor && pass || fail
+echo -n "  websocket-server: "; check_deployment "$NAMESPACE" websocket-server && pass || fail
+
 echo ""
-echo "Monitoring..."
-echo -n "Prometheus:     "; check_pods monitoring "app.kubernetes.io/name=prometheus"     && pass || fail
-echo -n "Grafana:        "; check_pods monitoring "app.kubernetes.io/name=grafana"        && pass || fail
-echo -n "Loki:           "; check_pods monitoring "app=loki"                              && pass || fail
+echo "Kafka (namespace: kafka)..."
+echo -n "  Strimzi operator: "; check_deployment kafka strimzi-cluster-operator && pass || fail
+KAFKA_READY=$(kubectl get kafka event-cluster -n kafka \
+  -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "False")
+echo -n "  Kafka cluster:    "
+[ "$KAFKA_READY" = "True" ] && pass || fail
+
 echo ""
-echo "ArgoCD..."
-echo -n "ArgoCD server:  "; check_pods argocd "app.kubernetes.io/name=argocd-server"     && pass || fail
-echo -n "Repo server:    "; check_pods argocd "app.kubernetes.io/name=argocd-repo-server" && pass || fail
+echo "Redis (namespace: redis)..."
+echo -n "  redis-master:     "; check_statefulset redis redis-master && pass || fail
+
 echo ""
-echo "ArgoCD sync status..."
-SYNC_STATUS=$(kubectl get application "$PROJECT_NAME" -n argocd \
+echo "Monitoring (namespace: monitoring)..."
+echo -n "  Prometheus:       "; check_deployment monitoring \
+  "$(kubectl get deployment -n monitoring -o name 2>/dev/null | grep prometheus-server | head -1 | cut -d/ -f2 || echo prometheus)" \
+  && pass || fail
+echo -n "  Grafana:          "; check_deployment monitoring \
+  "$(kubectl get deployment -n monitoring -o name 2>/dev/null | grep grafana | head -1 | cut -d/ -f2 || echo grafana)" \
+  && pass || fail
+
+echo ""
+echo "ArgoCD (namespace: $ARGOCD_NS)..."
+echo -n "  argocd-server:    "; check_deployment "$ARGOCD_NS" argocd-server     && pass || fail
+echo -n "  repo-server:      "; check_deployment "$ARGOCD_NS" argocd-repo-server && pass || fail
+
+echo ""
+echo "ArgoCD application status..."
+SYNC_STATUS=$(kubectl get application "$PROJECT_NAME" -n "$ARGOCD_NS" \
   -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "Unknown")
-HEALTH_STATUS=$(kubectl get application "$PROJECT_NAME" -n argocd \
+HEALTH_STATUS=$(kubectl get application "$PROJECT_NAME" -n "$ARGOCD_NS" \
   -o jsonpath='{.status.health.status}' 2>/dev/null || echo "Unknown")
-echo "Sync:   $SYNC_STATUS"
-echo "Health: $HEALTH_STATUS"
+echo "  Sync:   $SYNC_STATUS"
+echo "  Health: $HEALTH_STATUS"
+
 echo ""
-echo "Backend API..."
-echo -n "Health endpoint: "
-HTTP_CODE=$(kubectl run "health-probe-$RANDOM" \
-  --image=curlimages/curl --restart=Never -i --rm --quiet -- \
+echo "API Gateway health endpoint..."
+echo -n "  /health:          "
+HTTP_CODE=$(kubectl run "health-probe-$$" \
+  --image=curlimages/curl:latest --restart=Never -i --rm --quiet \
+  -n "$NAMESPACE" -- \
   curl -s -o /dev/null -w "%{http_code}" \
-  http://backend.devops-app:5000/api/health 2>/dev/null || echo "000")
-if [ "$HTTP_CODE" = "200" ]; then pass; else echo "$HTTP_CODE"; fi
+  "http://api-gateway.$NAMESPACE:5000/health" 2>/dev/null || echo "000")
+if [ "$HTTP_CODE" = "200" ]; then pass; else echo "HTTP $HTTP_CODE"; fi
+
 echo ""
-echo "Health check complete."' look at this and now create a health script for out project
+echo "Health check complete."
